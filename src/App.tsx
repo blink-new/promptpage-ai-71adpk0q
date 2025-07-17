@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Button } from './components/ui/button'
 import { Textarea } from './components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
@@ -20,14 +21,10 @@ import {
   Settings,
   Code,
   FileText,
-  Star,
-  Check,
   Zap,
   AlertCircle,
   Plus,
-  Edit3,
-  Palette,
-  Move
+  Edit3
 } from 'lucide-react'
 import { generateLandingPage, exportAsHTML, exportAsReact, regenerateSectionHTML, type GeneratedPage, type GeneratedSection } from './services/pageGenerator'
 import { EditableSection } from './components/EditableSection'
@@ -42,7 +39,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('generator')
   const [error, setError] = useState<string | null>(null)
   const [editMode, setEditMode] = useState(false)
-  const [draggedSection, setDraggedSection] = useState<string | null>(null)
+
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -114,12 +111,12 @@ function App() {
     toast.success('Section duplicated')
   }, [generatedPage])
 
-  const reorderSections = useCallback((startIndex: number, endIndex: number) => {
-    if (!generatedPage) return
+  const handleDragEnd = useCallback((result: DropResult) => {
+    if (!result.destination || !generatedPage) return
     
     const newSections = Array.from(generatedPage.sections)
-    const [reorderedItem] = newSections.splice(startIndex, 1)
-    newSections.splice(endIndex, 0, reorderedItem)
+    const [reorderedItem] = newSections.splice(result.source.index, 1)
+    newSections.splice(result.destination.index, 0, reorderedItem)
     
     setGeneratedPage({
       ...generatedPage,
@@ -298,9 +295,8 @@ function App() {
 
       <div className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 lg:w-[400px] mx-auto mb-8">
+          <TabsList className="grid w-full grid-cols-1 lg:w-[200px] mx-auto mb-8">
             <TabsTrigger value="generator">Generator</TabsTrigger>
-            <TabsTrigger value="pricing">Pricing</TabsTrigger>
           </TabsList>
 
           <TabsContent value="generator" className="space-y-8">
@@ -340,7 +336,7 @@ function App() {
                   placeholder="Example: A landing page for a yoga instructor offering online classes with a calming design, testimonials section, and class booking form..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  className="min-h-[120px] resize-none"
+                  className="min-h-[80px] resize-none"
                   maxLength={500}
                 />
                 <div className="flex justify-between items-center">
@@ -433,36 +429,61 @@ function App() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {!editMode ? (
-                        // Simple toggle view
-                        generatedPage.sections.map((section) => (
-                          <div key={section.id} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <Grip className="w-4 h-4 text-muted-foreground cursor-move" />
-                              <span className="font-medium">{section.name}</span>
+                      <DragDropContext onDragEnd={handleDragEnd}>
+                        <Droppable droppableId="sections">
+                          {(provided) => (
+                            <div {...provided.droppableProps} ref={provided.innerRef}>
+                              {!editMode ? (
+                                // Simple toggle view
+                                generatedPage.sections.map((section, index) => (
+                                  <Draggable key={section.id} draggableId={section.id} index={index}>
+                                    {(provided, snapshot) => (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        className={`flex items-center justify-between p-3 border rounded-lg mb-3 bg-white transition-all duration-200 ${
+                                          snapshot.isDragging ? 'shadow-lg scale-105 rotate-1' : 'hover:shadow-md'
+                                        }`}
+                                      >
+                                        <div className="flex items-center space-x-3">
+                                          <div {...provided.dragHandleProps}>
+                                            <Grip className="w-4 h-4 text-muted-foreground cursor-move" />
+                                          </div>
+                                          <span className="font-medium">{section.name}</span>
+                                        </div>
+                                        <Switch
+                                          checked={section.enabled}
+                                          onCheckedChange={() => toggleSection(section.id)}
+                                        />
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                ))
+                              ) : (
+                                // Editable sections view
+                                generatedPage.sections.map((section, index) => (
+                                  <Draggable key={section.id} draggableId={section.id} index={index}>
+                                    {(provided, snapshot) => (
+                                      <div ref={provided.innerRef} {...provided.draggableProps} className="mb-4">
+                                        <EditableSection
+                                          section={section}
+                                          onUpdate={updateSection}
+                                          onDelete={deleteSection}
+                                          onDuplicate={duplicateSection}
+                                          onToggleVisibility={toggleSection}
+                                          isDragging={snapshot.isDragging}
+                                          dragHandleProps={provided.dragHandleProps}
+                                        />
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                ))
+                              )}
+                              {provided.placeholder}
                             </div>
-                            <Switch
-                              checked={section.enabled}
-                              onCheckedChange={() => toggleSection(section.id)}
-                            />
-                          </div>
-                        ))
-                      ) : (
-                        // Editable sections view
-                        <div className="space-y-4">
-                          {generatedPage.sections.map((section) => (
-                            <EditableSection
-                              key={section.id}
-                              section={section}
-                              onUpdate={updateSection}
-                              onDelete={deleteSection}
-                              onDuplicate={duplicateSection}
-                              onToggleVisibility={toggleSection}
-                              isDragging={draggedSection === section.id}
-                            />
-                          ))}
-                        </div>
-                      )}
+                          )}
+                        </Droppable>
+                      </DragDropContext>
                     </CardContent>
                   </Card>
 
@@ -521,41 +542,56 @@ function App() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                      <div className="bg-white rounded-xl border-2 border-slate-200/60 min-h-[800px] overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
+                      <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200/60 min-h-[800px] overflow-hidden shadow-2xl hover:shadow-3xl transition-all duration-500">
                         <div className="relative">
-                          {/* Browser Chrome */}
-                          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200/60">
+                          {/* Enhanced Browser Chrome */}
+                          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-100 to-slate-50 border-b border-slate-200/60 backdrop-blur-sm">
                             <div className="flex items-center space-x-2">
-                              <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                              <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
-                              <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                              <div className="w-3 h-3 bg-gradient-to-br from-red-400 to-red-500 rounded-full shadow-sm"></div>
+                              <div className="w-3 h-3 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full shadow-sm"></div>
+                              <div className="w-3 h-3 bg-gradient-to-br from-green-400 to-green-500 rounded-full shadow-sm"></div>
                             </div>
                             <div className="flex-1 max-w-md mx-4">
-                              <div className="bg-white rounded-md px-3 py-1 text-sm text-slate-500 border border-slate-200">
-                                {generatedPage.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.com
+                              <div className="bg-white/80 backdrop-blur-sm rounded-lg px-4 py-2 text-sm text-slate-600 border border-slate-200/60 shadow-sm">
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                                  <span className="font-medium">
+                                    {generatedPage.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.com
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                            <div className="w-16"></div>
+                            <div className="flex items-center space-x-2">
+                              <div className="w-6 h-6 bg-slate-200 rounded border border-slate-300/60"></div>
+                              <div className="w-6 h-6 bg-slate-200 rounded border border-slate-300/60"></div>
+                            </div>
                           </div>
                           
-                          {/* Page Content */}
-                          <div className="bg-white overflow-y-auto max-h-[700px] scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
-                            <div className="space-y-0">
+                          {/* Enhanced Page Content */}
+                          <div className="bg-white overflow-y-auto max-h-[700px] scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100 relative">
+                            {/* Subtle overlay for depth */}
+                            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-50/30 pointer-events-none z-10"></div>
+                            
+                            <div className="space-y-0 relative">
                               {generatedPage.sections
                                 .filter(section => section.enabled)
-                                .map((section) => (
+                                .map((section, index) => (
                                   <div 
                                     key={section.id} 
                                     dangerouslySetInnerHTML={{ __html: section.html }}
-                                    className="w-full animate-fade-in"
+                                    className="w-full animate-fade-in relative"
                                     style={{
                                       '--primary': generatedPage.colorScheme.primary,
                                       '--secondary': generatedPage.colorScheme.secondary,
-                                      '--accent': generatedPage.colorScheme.accent
+                                      '--accent': generatedPage.colorScheme.accent,
+                                      animationDelay: `${index * 0.1}s`
                                     } as React.CSSProperties}
                                   />
                                 ))}
                             </div>
+                            
+                            {/* Bottom fade effect */}
+                            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
                           </div>
                         </div>
                       </div>
@@ -566,113 +602,7 @@ function App() {
             )}
           </TabsContent>
 
-          <TabsContent value="pricing" className="space-y-8">
-            <div className="text-center space-y-4 py-12">
-              <h2 className="text-3xl lg:text-5xl font-bold">Simple, Transparent Pricing</h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Choose the plan that works best for your needs. Start free, upgrade when you're ready.
-              </p>
-            </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-              {/* Free Plan */}
-              <Card className="relative">
-                <CardHeader>
-                  <CardTitle>Free</CardTitle>
-                  <div className="text-3xl font-bold">$0<span className="text-lg font-normal text-muted-foreground">/month</span></div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <ul className="space-y-3">
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>3 landing pages per month</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Basic templates</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>HTML export</span>
-                    </li>
-                  </ul>
-                  <Button variant="outline" className="w-full">Get Started</Button>
-                </CardContent>
-              </Card>
-
-              {/* Pro Plan */}
-              <Card className="relative border-primary">
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-primary text-primary-foreground">
-                    <Star className="w-3 h-3 mr-1" />
-                    Most Popular
-                  </Badge>
-                </div>
-                <CardHeader>
-                  <CardTitle>Pro</CardTitle>
-                  <div className="text-3xl font-bold">$29<span className="text-lg font-normal text-muted-foreground">/month</span></div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <ul className="space-y-3">
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Unlimited landing pages</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Premium templates</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>HTML & React export</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Custom branding</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Priority support</span>
-                    </li>
-                  </ul>
-                  <Button className="w-full">Upgrade to Pro</Button>
-                </CardContent>
-              </Card>
-
-              {/* Enterprise Plan */}
-              <Card className="relative">
-                <CardHeader>
-                  <CardTitle>Enterprise</CardTitle>
-                  <div className="text-3xl font-bold">$99<span className="text-lg font-normal text-muted-foreground">/month</span></div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <ul className="space-y-3">
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Everything in Pro</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Team collaboration</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>API access</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>White-label solution</span>
-                    </li>
-                    <li className="flex items-center space-x-2">
-                      <Check className="w-4 h-4 text-green-500" />
-                      <span>Dedicated support</span>
-                    </li>
-                  </ul>
-                  <Button variant="outline" className="w-full">Contact Sales</Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
         </Tabs>
       </div>
 
