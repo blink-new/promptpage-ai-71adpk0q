@@ -242,6 +242,31 @@ const SECTION_TEMPLATES = {
   `
 }
 
+export function regenerateSectionHTML(section: GeneratedSection, colorScheme: any): GeneratedSection {
+  let html = ''
+  
+  const sectionType = section.name.toLowerCase()
+  if (sectionType.includes('hero')) {
+    html = SECTION_TEMPLATES.hero(section.content, colorScheme)
+  } else if (sectionType.includes('feature')) {
+    html = SECTION_TEMPLATES.features(section.content, colorScheme)
+  } else if (sectionType.includes('testimonial')) {
+    html = SECTION_TEMPLATES.testimonials(section.content, colorScheme)
+  } else if (sectionType.includes('faq')) {
+    html = SECTION_TEMPLATES.faq(section.content, colorScheme)
+  } else if (sectionType.includes('cta')) {
+    html = SECTION_TEMPLATES.cta(section.content, colorScheme)
+  } else {
+    // Fallback for any other section type
+    html = `<section class="py-16 px-4"><div class="max-w-4xl mx-auto text-center"><h2 class="text-3xl font-bold mb-4">${section.name}</h2><div class="text-gray-600">${JSON.stringify(section.content)}</div></div></section>`
+  }
+  
+  return {
+    ...section,
+    html: html.trim()
+  }
+}
+
 export async function generateLandingPage(prompt: string): Promise<GeneratedPage> {
   // Generate the landing page structure and content using AI
   const { object: pageStructure } = await blink.ai.generateObject({

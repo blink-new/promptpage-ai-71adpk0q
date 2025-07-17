@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Button } from './components/ui/button'
 import { Textarea } from './components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card'
@@ -23,9 +23,15 @@ import {
   Star,
   Check,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Edit3,
+  Palette,
+  Move
 } from 'lucide-react'
-import { generateLandingPage, exportAsHTML, exportAsReact, type GeneratedPage } from './services/pageGenerator'
+import { generateLandingPage, exportAsHTML, exportAsReact, regenerateSectionHTML, type GeneratedPage, type GeneratedSection } from './services/pageGenerator'
+import { EditableSection } from './components/EditableSection'
+import { SectionCustomizer } from './components/SectionCustomizer'
 import toast, { Toaster } from 'react-hot-toast'
 
 function App() {
@@ -35,6 +41,8 @@ function App() {
   const [generatedPage, setGeneratedPage] = useState<GeneratedPage | null>(null)
   const [activeTab, setActiveTab] = useState('generator')
   const [error, setError] = useState<string | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [draggedSection, setDraggedSection] = useState<string | null>(null)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -64,6 +72,128 @@ function App() {
         section.id === sectionId ? { ...section, enabled: !section.enabled } : section
       )
     })
+  }
+
+  const updateSection = useCallback((updatedSection: GeneratedSection) => {
+    if (!generatedPage) return
+    
+    // Regenerate HTML for the updated section
+    const sectionWithNewHTML = regenerateSectionHTML(updatedSection, generatedPage.colorScheme)
+    
+    setGeneratedPage({
+      ...generatedPage,
+      sections: generatedPage.sections.map(section =>
+        section.id === updatedSection.id ? sectionWithNewHTML : section
+      )
+    })
+  }, [generatedPage])
+
+  const deleteSection = useCallback((sectionId: string) => {
+    if (!generatedPage) return
+    
+    setGeneratedPage({
+      ...generatedPage,
+      sections: generatedPage.sections.filter(section => section.id !== sectionId)
+    })
+    toast.success('Section deleted')
+  }, [generatedPage])
+
+  const duplicateSection = useCallback((section: GeneratedSection) => {
+    if (!generatedPage) return
+    
+    const newSection = {
+      ...section,
+      id: `${section.id}_copy_${Date.now()}`,
+      name: `${section.name} (Copy)`
+    }
+    
+    setGeneratedPage({
+      ...generatedPage,
+      sections: [...generatedPage.sections, newSection]
+    })
+    toast.success('Section duplicated')
+  }, [generatedPage])
+
+  const reorderSections = useCallback((startIndex: number, endIndex: number) => {
+    if (!generatedPage) return
+    
+    const newSections = Array.from(generatedPage.sections)
+    const [reorderedItem] = newSections.splice(startIndex, 1)
+    newSections.splice(endIndex, 0, reorderedItem)
+    
+    setGeneratedPage({
+      ...generatedPage,
+      sections: newSections
+    })
+  }, [generatedPage])
+
+  const addNewSection = useCallback((sectionType: string) => {
+    if (!generatedPage) return
+    
+    const newSection: GeneratedSection = {
+      id: `new_${sectionType}_${Date.now()}`,
+      name: `New ${sectionType.charAt(0).toUpperCase() + sectionType.slice(1)}`,
+      enabled: true,
+      content: getSectionTemplate(sectionType),
+      html: `<section class="py-16 px-4"><div class="max-w-4xl mx-auto text-center"><h2 class="text-3xl font-bold mb-4">New ${sectionType.charAt(0).toUpperCase() + sectionType.slice(1)}</h2><p class="text-gray-600">Edit this section to customize its content.</p></div></section>`
+    }
+    
+    setGeneratedPage({
+      ...generatedPage,
+      sections: [...generatedPage.sections, newSection]
+    })
+    toast.success('New section added')
+  }, [generatedPage])
+
+  const getSectionTemplate = (sectionType: string) => {
+    switch (sectionType) {
+      case 'hero':
+        return {
+          headline: 'Your Amazing Headline',
+          subheadline: 'Supporting Subheadline',
+          description: 'Compelling description that converts visitors into customers.',
+          primaryCTA: 'Get Started',
+          secondaryCTA: 'Learn More',
+          badge: 'New & Improved'
+        }
+      case 'features':
+        return {
+          title: 'Powerful Features',
+          subtitle: 'Everything you need to succeed',
+          features: [
+            { title: 'Feature 1', description: 'Description of feature 1' },
+            { title: 'Feature 2', description: 'Description of feature 2' },
+            { title: 'Feature 3', description: 'Description of feature 3' }
+          ]
+        }
+      case 'testimonials':
+        return {
+          title: 'What Our Customers Say',
+          subtitle: 'Join thousands of satisfied customers',
+          testimonials: [
+            { text: 'Great product! Highly recommended.', author: 'John Doe', role: 'CEO, Company' },
+            { text: 'Excellent service and support.', author: 'Jane Smith', role: 'Marketing Director' }
+          ]
+        }
+      case 'faq':
+        return {
+          title: 'Frequently Asked Questions',
+          subtitle: 'Everything you need to know',
+          faqs: [
+            { question: 'How does it work?', answer: 'It works by...' },
+            { question: 'Is it secure?', answer: 'Yes, it is completely secure...' }
+          ]
+        }
+      case 'cta':
+        return {
+          headline: 'Ready to Get Started?',
+          description: 'Join thousands of satisfied customers today',
+          primaryCTA: 'Start Free Trial',
+          secondaryCTA: 'Contact Sales'
+        }
+      default:
+        return { title: 'New Section', content: 'Edit this section to add your content.' }
+    }
   }
 
   const handleExport = (format: 'html' | 'react') => {
@@ -243,6 +373,58 @@ function App() {
               <div className="grid lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
                 {/* Controls Panel */}
                 <div className="lg:col-span-1 space-y-6">
+                  {/* Edit Mode Toggle */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Edit3 className="w-5 h-5" />
+                          <span>Edit Mode</span>
+                        </div>
+                        <Switch
+                          checked={editMode}
+                          onCheckedChange={setEditMode}
+                        />
+                      </CardTitle>
+                    </CardHeader>
+                    {editMode && (
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Edit mode allows you to customize sections, reorder them, and add new content.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => addNewSection('hero')}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Hero
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => addNewSection('features')}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Features
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => addNewSection('testimonials')}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Testimonials
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => addNewSection('faq')}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            FAQ
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => addNewSection('cta')}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            CTA
+                          </Button>
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+
+                  {/* Section Customizer */}
+                  <SectionCustomizer 
+                    page={generatedPage}
+                    onUpdatePage={setGeneratedPage}
+                  />
+
+                  {/* Page Sections */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2">
@@ -251,18 +433,36 @@ function App() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {generatedPage.sections.map((section) => (
-                        <div key={section.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <Grip className="w-4 h-4 text-muted-foreground cursor-move" />
-                            <span className="font-medium">{section.name}</span>
+                      {!editMode ? (
+                        // Simple toggle view
+                        generatedPage.sections.map((section) => (
+                          <div key={section.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <Grip className="w-4 h-4 text-muted-foreground cursor-move" />
+                              <span className="font-medium">{section.name}</span>
+                            </div>
+                            <Switch
+                              checked={section.enabled}
+                              onCheckedChange={() => toggleSection(section.id)}
+                            />
                           </div>
-                          <Switch
-                            checked={section.enabled}
-                            onCheckedChange={() => toggleSection(section.id)}
-                          />
+                        ))
+                      ) : (
+                        // Editable sections view
+                        <div className="space-y-4">
+                          {generatedPage.sections.map((section) => (
+                            <EditableSection
+                              key={section.id}
+                              section={section}
+                              onUpdate={updateSection}
+                              onDelete={deleteSection}
+                              onDuplicate={duplicateSection}
+                              onToggleVisibility={toggleSection}
+                              isDragging={draggedSection === section.id}
+                            />
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </CardContent>
                   </Card>
 
@@ -496,6 +696,18 @@ function App() {
           </div>
         </div>
       </footer>
+      
+      <Toaster 
+        position="bottom-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: isDarkMode ? '#1f2937' : '#ffffff',
+            color: isDarkMode ? '#f9fafb' : '#111827',
+            border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb',
+          },
+        }}
+      />
     </div>
   )
 }
